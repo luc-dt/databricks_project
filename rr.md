@@ -168,6 +168,104 @@ index 6daed9bf43cb58e8591b46fb60ca66d387f2d068..a1b1bed1f3e0a4a9f1e18b67c77ec289
  on:
    push:
      branches: [main]
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+index 274187aacea4ef776cd1c5215fcc3c6688b4bbe3..429e83b443b0313ccf47cc4c770e668356ddde23 100644
+--- a/requirements-dev.txt
++++ b/requirements-dev.txt
+@@ -1,4 +1,4 @@
+ nbqa==1.9.1
+ ruff==0.4.4
+ pytest==8.2.0
+-nbformat==5.10.4.
+\ No newline at end of file
++nbformat==5.10.4
+\ No newline at end of file
+diff --git a/script/gold/gold_dim_products.ipynb b/script/gold/gold_dim_products.ipynb
+index f62ad740d109c4e3a8157c308d82ae54922ceb1c..46807d9d1bdfd0ac204911356f39429215e333de 100644
+--- a/script/gold/gold_dim_products.ipynb
++++ b/script/gold/gold_dim_products.ipynb
+@@ -30,51 +30,51 @@
+      "nuid": "408acf60-737a-4685-a370-d3f10828a51d",
+      "showTitle": false,
+      "startTime": 1777539498356,
+      "submitTime": 1777539498310,
+      "tableResultSettingsMap": {},
+      "title": ""
+     }
+    },
+    "outputs": [],
+    "source": [
+     "query = \"\"\"\n",
+     "SELECT\n",
+     "    ROW_NUMBER() OVER (ORDER BY pn.start_date, pn.product_number) AS product_key, -- Surrogate key\n",
+     "    pn.product_id,\n",
+     "    pn.product_number,\n",
+     "    pn.product_name,\n",
+     "    pn.category_id,\n",
+     "    pc.category,\n",
+     "    pc.subcategory,\n",
+     "    pc.maintenance_flag,\n",
+     "    pn.product_line,\n",
+     "    pn.start_date\n",
+     "FROM silver.crm_products pn\n",
+     "LEFT JOIN silver.erp_product_category pc\n",
+     "    ON pn.category_id = pc.category_id\n",
+-    "--WHERE pn.end_date IS NULL; -- Filter out all historical data\n",
++    "WHERE pn.end_date IS NULL -- Keep active SCD2 record only\n",
+     "\"\"\"\n",
+     "df = spark.sql(query)"
+    ]
+   },
+   {
+    "cell_type": "code",
+    "execution_count": 0,
+    "metadata": {
+     "application/vnd.databricks.v1+cell": {
+      "cellMetadata": {
+       "byteLimit": 2048000,
+       "rowLimit": 10000
+      },
+      "finishTime": 1777539512248,
+      "inputWidgets": {},
+      "nuid": "cc8145e2-ef32-4b12-a3c7-afb312935952",
+      "showTitle": false,
+      "startTime": 1777539504764,
+      "submitTime": 1777539504728,
+      "tableResultSettingsMap": {},
+      "title": ""
+     }
+    },
+    "outputs": [],
+    "source": [
+@@ -186,26 +186,26 @@
+    "dashboards": [],
+    "environmentMetadata": {
+     "base_environment": "",
+     "environment_version": "5"
+    },
+    "inputWidgetPreferences": null,
+    "language": "python",
+    "notebookMetadata": {
+     "mostRecentlyExecutedCommandWithImplicitDF": {
+      "commandId": 8419362217277058,
+      "dataframes": [
+       "_sqldf"
+      ]
+     },
+     "pythonIndentUnit": 4
+    },
+    "notebookName": "gold_dim_products",
+    "widgets": {}
+   },
+   "language_info": {
+    "name": "python"
+   }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 0
+-}
++}
+\ No newline at end of file
  
 EOF
 )
