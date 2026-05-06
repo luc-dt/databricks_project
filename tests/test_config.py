@@ -2,7 +2,7 @@ import pytest
 import nbformat
 from pathlib import Path
 
-CONFIG_NOTEBOOK_PATH = Path("utils/config.ipynb")
+CONFIG_NOTEBOOK_PATH = Path("script/utils/config.ipynb")
 
 # Load type 'code' exist the notebooks
 def load_config():
