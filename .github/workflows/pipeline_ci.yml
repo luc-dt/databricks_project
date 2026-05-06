@@ -1,0 +1,29 @@
+name: PySpark CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pyspark-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install nbqa ruff pytest nbformat
+        run: pip install nbqa ruff pytest nbformat
+      
+      - name: Run the linter on notebooks
+        run: nbqa ruff .
+
+      - name: Run PySpark
+        run: pytest tests/ -v

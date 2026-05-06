@@ -10,6 +10,8 @@ The project is organized into three data layers and one automation layer. The fi
 *   **Gold:** Business-ready dimensional modeling.
 *   **Pipeline:** Orchestration with Databricks Workflows.
 
+![Medallion Architecture](script/images/architecture.png)
+
 ---
 
 ## 🗂️ Repository Structure
@@ -46,6 +48,7 @@ Use a Databricks workspace with Unity Catalog enabled. Create or confirm the fol
 *   `bronze`
 *   `silver`
 *   `gold`
+*   `monitoring`
 
 **2. Create the raw file volume**
 Create a volume in the Bronze schema to act as the landing zone:
@@ -55,7 +58,7 @@ Create a volume in the Bronze schema to act as the landing zone:
 Place the six source CSV files into the `raw_sources` volume.
 
 **4. Initialize the lakehouse**
-Run the initialization script. This notebook prepares the schemas and storage needed for the project.
+Run the initialization script. This notebook prepares the schemas, storage, and audit log table needed for the project.
 ```bash
 script/init_lakehouse.ipynb
 ```
@@ -89,14 +92,16 @@ This notebook builds the dimensional model in `workspace.gold`, including custom
 
 ## 📊 Data Model Outputs
 
+![Data Flow Diagram](script/images/diagram.png)
+
 **Silver Outputs**
 The Silver layer produces cleaned, standardized tables such as:
 *   `workspace.silver.crm_customers`
 *   `workspace.silver.crm_products`
 *   `workspace.silver.crm_sales`
-*   `workspace.silver.erp_cust_az12`
-*   `workspace.silver.erp_loc_a101`
-*   `workspace.silver.erp_px_cat_g1v2`
+*   `workspace.silver.erp_customers`
+*   `workspace.silver.erp_customer_location`
+*   `workspace.silver.erp_product_category`
 
 **Gold Outputs**
 The Gold layer creates the final Star Schema:
@@ -114,11 +119,12 @@ The pipeline is designed to run as a Databricks Workflow named `loading_bike_dat
 2.  Silver orchestration
 3.  Gold orchestration
 
+![Auto Pipeline](script/images/auto_pipeline.png)
 ---
 
 ## ✅ Production-Grade Enhancements
 
-Beyond the base Lakehouse, three production engineering patterns were implemented:
+Beyond the base Lakehouse, four production engineering patterns were implemented:
 
 ### 1. 📋 Data Quality Framework
 Every Silver notebook includes a validation block that runs after each write. Checks enforced:
@@ -153,21 +159,132 @@ else:
 All Silver and Gold notebooks source table names and schema references from a single config notebook (`utils/config`), loaded via `%run`:
 
 ```python
-CATALOG       = "workspace"
-SILVER_SCHEMA = "silver"
-GOLD_SCHEMA   = "gold"
+CATALOG            = "workspace"
+SILVER_SCHEMA      = "silver"
+GOLD_SCHEMA        = "gold"
+MONITORING_SCHEMA  = "monitoring"
 
 TABLES = {
     "crm_cust":  f"{CATALOG}.{SILVER_SCHEMA}.crm_customers",
     "crm_prd":   f"{CATALOG}.{SILVER_SCHEMA}.crm_products",
     "crm_sales": f"{CATALOG}.{SILVER_SCHEMA}.crm_sales",
-    "erp_cust":  f"{CATALOG}.{SILVER_SCHEMA}.erp_cust_az12",
-    "erp_loc":   f"{CATALOG}.{SILVER_SCHEMA}.erp_loc_a101",
-    "erp_cat":   f"{CATALOG}.{SILVER_SCHEMA}.erp_px_cat_g1v2",
+    "erp_cust":  f"{CATALOG}.{SILVER_SCHEMA}.erp_customers",
+    "erp_loc":   f"{CATALOG}.{SILVER_SCHEMA}.erp_customer_location",
+    "erp_cat":   f"{CATALOG}.{SILVER_SCHEMA}.erp_product_category",
+    "audit_log": f"{CATALOG}.{MONITORING_SCHEMA}.pipeline_audit_log",
 }
 ```
 
 Centralizing table references means environment promotion (dev → prod) requires changing one file, not touching every pipeline notebook.
+
+### 4. 📡 Monitoring & Observability
+Every Silver notebook writes one audit row to a dedicated monitoring table after each pipeline run. This makes pipeline health visible and queryable.
+
+**Audit log table:** `workspace.monitoring.pipeline_audit_log`
+
+| Column | Type | Description |
+|---|---|---|
+| `notebook_name` | STRING | Which notebook ran |
+| `target_table` | STRING | Which silver table was written |
+| `run_timestamp` | TIMESTAMP | When the run completed |
+| `rows_inserted` | LONG | Rows added by MERGE |
+| `rows_updated` | LONG | Rows modified by MERGE |
+| `rows_deleted` | LONG | Rows removed by MERGE |
+| `qc_status` | STRING | `PASS` or `FAIL` |
+| `qc_message` | STRING | Failure reason or `All checks passed` |
+
+QC asserts are wrapped in `try/except AssertionError` so the audit log is always written — whether the pipeline passes or fails. A pipeline that crashes silently is unobservable; a pipeline that logs its failure is debuggable.
+
+Each Silver notebook includes a final sanity check cell that displays the audit log sorted by most recent runs first:
+```python
+spark.sql(f"SELECT * FROM {TABLES['audit_log']} ORDER BY run_timestamp DESC").display()
+```
+
+### 5. 🧪 CI/CD & Automated Testing
+A continuous integration pipeline and automated test suite ensure the configuration integrity and code quality across all pipeline notebooks.
+
+**Why This Matters**
+
+In a production lakehouse, configuration drift is a silent killer. A typo in a schema name, a missing table key in `TABLES`, or an accidental hardcoded catalog reference can break an entire downstream workflow — often only discovered during a late-night production run. Automated testing catches these issues before they reach production.
+
+Additionally, notebook code is notoriously difficult to lint and test compared to plain Python files. The CI/CD setup bridges this gap by treating notebooks as testable, lintable artifacts.
+
+**What Was Implemented**
+
+Three components work together to enforce quality gates on every push:
+
+**1. GitHub Actions Workflow** (`.github/workflows/pipeline_ci.yml`)
+
+Triggers automatically on every push or pull request to `main`. The workflow performs:
+
+*   **Code Quality Check**: Runs `nbqa ruff` to lint all notebooks using Ruff (a fast Python linter). This catches PEP 8 violations, unused imports, undefined variables, and other code smells directly inside `.ipynb` files.
+*   **Automated Tests**: Executes the pytest test suite against the centralized config notebook to validate configuration integrity.
+
+```yaml
+name: PySpark CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pyspark-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install nbqa ruff pytest nbformat
+        run: pip install nbqa ruff pytest nbformat
+      
+      - name: Run the linter on notebooks
+        run: nbqa ruff .
+
+      - name: Run tests
+        run: pytest tests/ -v
+```
+
+**2. Test Suite** (`tests/test_config.py`)
+
+Validates the `utils/config.ipynb` notebook programmatically by extracting and executing its code cells, then asserting on critical properties:
+
+| Test | Purpose |
+|---|---|
+| `test_catalog_equals_workspace` | Ensures `CATALOG` variable is always set to `"workspace"` — prevents accidental references to dev or staging catalogs |
+| `test_tables_keys` | Verifies all seven expected table keys exist in the `TABLES` dictionary (`crm_cust`, `crm_prd`, `crm_sales`, `erp_cust`, `erp_loc`, `erp_cat`, `audit_log`) — catches missing or renamed keys before pipelines break |
+| `test_tables_values_fully_qualified` | Confirms every table reference is a fully qualified three-part name (`catalog.schema.table`) — prevents ambiguous references that fail in Unity Catalog environments |
+
+The test suite uses `nbformat` to parse notebook JSON, extract code cells, and execute them in a sandboxed namespace. This allows testing notebook configuration as if it were a standard Python module.
+
+**3. Development Dependencies** (`requirements-dev.txt`)
+
+Pins exact versions of testing and linting tools to ensure reproducible CI runs:
+
+```text
+nbqa==1.9.1       # Enables running quality tools (ruff, black, mypy) on Jupyter notebooks
+ruff==0.4.4       # Fast Python linter — replaces flake8, isort, and pylint
+pytest==8.2.0     # Testing framework
+nbformat==5.10.4  # Parses and validates Jupyter notebook format
+```
+
+**Purpose & Impact**
+
+This CI/CD setup provides four critical safeguards:
+
+1.  **Early Detection**: Configuration errors are caught in seconds during development, not hours later during a workflow run.
+2.  **Enforced Standards**: Code quality is non-negotiable — linting failures block merges, ensuring every notebook meets baseline quality standards.
+3.  **Regression Prevention**: Tests act as regression guards. If a refactor accidentally breaks the config structure, the test suite fails before code is merged.
+4.  **Team Scalability**: New contributors can safely modify notebooks knowing the CI pipeline will catch breaking changes. This lowers the barrier to collaboration.
+
+In production, this means fewer pipeline failures, faster debugging when issues do occur, and higher confidence in promoting code across environments.
 
 ---
 
@@ -181,3 +298,6 @@ This project demonstrates a practical Databricks Lakehouse implementation using:
 *   Config-driven, environment-portable notebook design
 *   Dimensional modeling (Star Schema)
 *   Workflow orchestration via Databricks Jobs
+*   Pipeline observability via Delta audit log (`workspace.monitoring`)
+*   CI/CD automation with GitHub Actions
+*   Automated testing for configuration integrity
