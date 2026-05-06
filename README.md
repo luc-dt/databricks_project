@@ -1,4 +1,9 @@
 # 🚲 Databricks Bike Data Lakehouse Project
+![CI](https://github.com/luc-dt/databricks_project/actions/workflows/pipeline_ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)
+![Databricks](https://img.shields.io/badge/Databricks-Lakehouse-FF3621?logo=databricks&logoColor=white)
+![Delta Lake](https://img.shields.io/badge/Delta_Lake-Medallion_Architecture-00ADD8?logo=apachespark&logoColor=white)
+![Linter](https://img.shields.io/badge/Linter-Ruff-D7FF64?logo=ruff&logoColor=black)
 
 This repository documents an end-to-end Databricks Lakehouse built with the **Medallion Architecture**. It ingests raw CRM and ERP files, cleans and standardizes them, models them into a star schema, and prepares the workflow for orchestration in Databricks.
 
