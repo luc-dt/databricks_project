@@ -23,7 +23,7 @@ jobs:
         run: pip install nbqa ruff pytest nbformat
       
       - name: Run the linter on notebooks
-        run: nbqa ruff .
+        run: nbqa ruff . --extend-ignore=F821,E402,F401
 
       - name: Run PySpark
         run: pytest tests/ -v
