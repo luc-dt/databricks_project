@@ -299,6 +299,7 @@ This project demonstrates a practical Databricks Lakehouse implementation using:
 *   Unity Catalog governance
 *   Delta tables with ACID guarantees
 *   Incremental MERGE pipelines
+*   SCD Type 2 — active record filtering at Gold layer
 *   Data Quality validation at the Silver layer
 *   Config-driven, environment-portable notebook design
 *   Dimensional modeling (Star Schema)
